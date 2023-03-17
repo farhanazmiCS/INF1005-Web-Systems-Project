@@ -1,67 +1,77 @@
 <?php
-    // Establish connection first
-    $success = true;
-    $errorMsg = $result = $fname = "";
-    $email = "test@gmail.com"; // In real world, this would not be hardcoded
-    $config = parse_ini_file('../../private/db-config.ini');
-    $conn = new mysqli($config['servername'], $config['username'],
-    $config['password'], $config['dbname']);
-    // Check connection
-    if ($conn->connect_error)
-    {
-        $errorMsg = "Connection failed: " . $conn->connect_error;
-        $success = false;
-    }
-    else {
-        // Prepare the statement (Selecting the user):
-            $stmt_select_user = $conn->prepare("SELECT * FROM users WHERE
-            email=?");
-            // Bind & execute the query statement:
-            $stmt_select_user->bind_param("s", $email);
-            $stmt_select_user->execute();
-            $result = $stmt_select_user->get_result();
-            if ($result->num_rows > 0)
-            {
-                // Note that email field is unique, so should only have
-                // one row in the result set.
-                $row = $result->fetch_assoc();
-                $user_id = $row["user_id"];
-                $fname = $row["fname"];
-                $stmt_select_user->close();
-                
-                // Insert a new cart record
-                $product_name = "CARGO BERMUDA SHORTS";
-                $stmt_select_product = $conn->prepare("SELECT * FROM products WHERE
-                product_name=?");
-                // Bind & execute the query statement:
-                $stmt_select_product->bind_param("s", $product_name);
-                $stmt_select_product->execute();
+    $errorMsg = "";
+    function addItemToCart($user_id, $product_id, $size, $quantity) {
+        global $errorMsg, $success;
+        // Establish connection first
+        $success = true;
+        $config = parse_ini_file('../private/db-config.ini');
+        $conn = new mysqli($config['servername'], $config['username'],
+        $config['password'], $config['dbname']);
+        // Check connection
+        if ($conn->connect_error)
+        {
+            $errorMsg = "Connection failed: " . $conn->connect_error;
+            $success = false;
+        }
+        else {
+            if ($user_id != 0) {
+                $stmt_select_product = $conn->prepare("SELECT * FROM products WHERE product_id=?");
+                $stmt_select_product->bind_param("i", $product_id);
+                if (!$stmt_select_product->execute()) {
+                    $errorMsg = "Your error is: " . $stmt_select_product->errno;
+                    $success = false;
+                }
                 $result_product = $stmt_select_product->get_result();
-                
-                if ($result_product->num_rows > 0) {
+
+                if ($result_product->num_rows != 0) {
                     $row_product = $result_product->fetch_assoc();
                     $product_id = $row_product["product_id"];
                     $stmt_select_product->close();
-  
-                    // Afterwards, create a new record in cart
-                    $quantity = 2;
-                    $size = "XL";
-                    $stmt_insert_cart = $conn->prepare("INSERT INTO carts (user_id, item_id, quantity, size) VALUES (?, ?, ?, ?)");
-                    $stmt_insert_cart->bind_param("iiis", $user_id, $product_id, $quantity, $size);
-                    if (!$stmt_insert_cart->execute()) {
-                        $errorMsg = "Execute failed: (" . $stmt_insert_cart->errno . ") " . $stmt->error;
-                        $success = false;
+
+                    // First, check if the current item exist
+                    $stmt_select_cart = $conn->prepare("SELECT * FROM carts WHERE user_id=? AND item_id=? AND size=?");
+                    $stmt_select_cart->bind_param("iis", $user_id, $product_id, $size);
+                    $stmt_select_cart->execute();
+                    $result_cart = $stmt_select_cart->get_result();
+                    $stmt_select_cart->close();
+
+                    if ($result_cart->num_rows == 0) {
+                        $stmt_insert_cart = $conn->prepare("INSERT INTO carts (user_id, item_id, quantity, size) VALUES (?, ?, ?, ?)");
+                        $stmt_insert_cart->bind_param("iiis", $user_id, $product_id, $quantity, $size);
+                        if (!$stmt_insert_cart->execute()) {
+                            $errorMsg = "This error is " . $stmt_insert_cart->errno;
+                            $success = false;
+                        }
+                        $stmt_insert_cart->close();
                     }
-                    $stmt_insert_cart->close();
+                    else {
+                        $row = $result_cart->fetch_assoc();
+                        $new_quantity = $row["quantity"] + $quantity;
+                        $stmt_update_cart = $conn->prepare("UPDATE carts SET quantity=? WHERE user_id=? AND item_id=? AND size=?");
+                        $stmt_update_cart->bind_param("iiis", $new_quantity, $user_id, $product_id, $size);
+                        if (!$stmt_update_cart->execute()) {
+                            $errorMsg = "HHAHAH Failed" . $stmt_update_cart->errno;
+                            $success = false;
+                        }
+                        $stmt_update_cart->close();
+                    }
                 }
-            }
-            else
-            {
-                $errorMsg = "Email not found or password doesn't match...";
-                $success = false;
-            }
+            }     
+        }
+        $conn->close();
     }
-    $conn->close();
+    
+    function removeItemFromCart() {
+        // Todo
+    }
+    
+    
+
+
+
+            
+    addItemToCart(3, 1, "M", 3);
+    
 ?>
 <!DOCTYPE HTML>
 <html lang="en">
@@ -108,7 +118,7 @@
                     else {
                         echo '<div class="container">';
                         echo "<h1>Failed!</h1>";
-                        echo "<hr><h3>Login failed due to:</h3>";
+                        echo "<hr><h3>Failed:</h3>";
                         echo "<p>$errorMsg</p>";
                         echo "</div>";
               
